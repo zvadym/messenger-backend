@@ -18,16 +18,23 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    'channels',
+    'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
+    'corsheaders',
+    # 'channels',
 
-    'apps.chat.apps.ChatConfig',
+    'apps.api',
+    # 'apps.chat.apps.ChatConfig',
+    'apps.members',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    'corsheaders.middleware.CorsPostCsrfMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -64,6 +71,7 @@ CHANNEL_LAYERS = {
     },
 }
 
+
 # Database
 # https://docs.djangoproject.com/en/3.0/ref/settings/#databases
 
@@ -75,8 +83,8 @@ DATABASES = {
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/3.0/ref/settings/#auth-password-validators
+# Password and Users
+AUTH_USER_MODEL = 'members.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -112,3 +120,27 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
+
+
+# CORS
+
+CORS_ORIGIN_WHITELIST = [
+    'http://127.0.0.1:8000',
+]
+
+CORS_REPLACE_HTTPS_REFERER = True
+
+CSRF_TRUSTED_ORIGINS = [
+    '127.0.0.1'
+]
+
+# REST
+
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
