@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'channels',
 
     'apps.api',
+    'apps.sockets',
     'apps.rooms',
     'apps.members',
 ]
