@@ -5,6 +5,9 @@ from django.db import models
 from django.utils import timezone
 
 
+ONLINE_TIMEOUT_SEC = 5 * 60
+
+
 class User(AbstractUser):
     last_action_dt = models.DateTimeField(auto_now=True)
 
@@ -16,7 +19,8 @@ class User(AbstractUser):
 
     @property
     def is_online(self):
-        return self.last_action_dt and timezone.now() - self.last_action_dt > datetime.timedelta(minutes=5)
+        return self.last_action_dt and timezone.now() - self.last_action_dt > \
+               datetime.timedelta(minutes=ONLINE_TIMEOUT_SEC)
 
     # def block_token(self, token):
     #     payload = jwt_decode_handler(token)

@@ -1,30 +1,51 @@
 from rest_framework import serializers
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.members.models import User
+from apps.rooms.models import Room, Message
+
+from .fields import MessageField
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('email', 'first_name', 'last_name', 'is_online')
+        fields = (
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'is_online',
+        )
 
 
-class RefreshTokenSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = (
+            'id',
+            'message',
+            'created_by',
+            'created_dt',
+        )
 
-    token = None
-    default_error_messages = {
-        'bad_token': 'Token is invalid or expired'
-    }
 
-    def validate(self, attrs):
-        self.token = attrs['refresh']
-        return attrs
+class RoomSerializer(serializers.ModelSerializer):
+    last_message = MessageField()
 
-    def save(self, **kwargs):
-        try:
-            RefreshToken(self.token).blacklist()
-        except TokenError:
-            self.fail('bad_token')
+    class Meta:
+        model = Room
+        fields = (
+            'id',
+            'title',
+            'last_message',
+            'created_dt',
+            'created_by',
+            'members',
+            'is_private',
+        )
+        read_only_fields = (
+            'id',
+            'last_message',
+            'created_dt',
+            'created_by',
+        )

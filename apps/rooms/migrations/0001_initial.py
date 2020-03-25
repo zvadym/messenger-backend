@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('title', models.TextField()),
-                ('last_message', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='rooms.Message')),
+                ('last_message', models.ForeignKey(null=True, blank=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='rooms.Message')),
             ],
         ),
         migrations.CreateModel(
