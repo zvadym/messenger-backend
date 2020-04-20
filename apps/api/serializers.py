@@ -24,8 +24,14 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'message',
+            'room_id',
             'created_by',
             'created_dt',
+        )
+        read_only_fields = (
+            'id',
+            'created_by',
+            'created_dt'
         )
 
 
@@ -42,6 +48,7 @@ class RoomSerializer(serializers.ModelSerializer):
             'created_by',
             'members',
             'is_private',
+            'updated_dt',
         )
         read_only_fields = (
             'id',

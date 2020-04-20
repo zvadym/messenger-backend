@@ -1,69 +1,124 @@
-from channels.generic.websocket import WebsocketConsumer, AsyncJsonWebsocketConsumer
+import channels.layers
+from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from asgiref.sync import async_to_sync
+
+from django.db.models import signals
+from django.dispatch import receiver
+
+from apps.api.serializers import MessageSerializer
+from apps.members.models import User
+from apps.rooms.models import Room, Message
 
 
-class MemberConsumer(WebsocketConsumer):
-    user = None
-
-    def connect(self):
-        self.username = "Anonymous"
-
-        self.accept()
-        self.send(text_data="[Welcome %s!]" % self.username)
-
-    def receive(self, *, text_data):
-        if text_data.startswith("/name"):
-            self.username = text_data[5:].strip()
-
-            self.send(text_data="[set your username to %s]" % self.username)
-        else:
-            self.send(text_data=self.username + ": " + text_data)
-
-    def disconnect(self, message):
-        pass
-
-
-class RoomConsumer(AsyncJsonWebsocketConsumer):
+class MessengerConsumer(AsyncJsonWebsocketConsumer):
     room_id = None
-    group_name = None
+
+    GROUPS = {
+        'common': 'member-{member_id}',
+        'room': 'room-{room_id}',
+    }
+
+    joined_groups = []
 
     async def connect(self):
-        self.room_id = self.scope['url_route']['kwargs']['room_id']
-        self.group_name = 'group-room-{}'.format(self.room_id)
-
-        # Join room group
-        await self.channel_layer.group_add(
-            self.group_name,
-            self.channel_name
-        )
-
+        # Join members group
+        await self.join_group(self.GROUPS['common'].format(member_id=self.scope['user'].pk))
         await self.accept()
 
     async def disconnect(self, close_code):
-        # Leave room group
-        self.channel_layer.group_discard(
-            self.group_name,
+        # Leave all joined groups
+        for group in self.joined_groups:
+            self.channel_layer.group_discard(
+                group,
+                self.channel_name
+            )
+
+    def join_group(self, group_name):
+        self.joined_groups.append(group_name)
+        return self.channel_layer.group_add(
+            group_name,
             self.channel_name
         )
 
+    @database_sync_to_async
+    def get_room(self, pk):
+        return Room.objects.get(pk=pk)
+
+    @database_sync_to_async
+    def get_room_members(self, room):
+        return list(room.members.values_list('pk', flat=True))
+
     # Receive message from WebSocket
     async def receive_json(self, content, **kwargs):
-        message = content['message']
+        if content['type'] == 'room-join':
+            try:
+                room = await self.get_room(content['id'])
+            except Room.DoesNotExist:
+                return
 
-        # Send message to room group
-        await self.channel_layer.group_send(
-            self.group_name,
+            members = await self.get_room_members(room)
+
+            # Check access to the room
+            if not room.is_private or self.scope['user'].pk in members:
+                group_name = self.GROUPS['room'].format(room_id=room.pk)
+
+                await self.channel_layer.group_add(
+                    group_name,
+                    self.channel_name
+                )
+            return
+
+        if content['type'] == 'room-leave':
+            return
+
+    async def websocket_message(self, event):
+        # Send message to WebSocket
+        print('websocket_message => ', self.channel_name,  event['data'])
+        await self.send_json(event['data'])
+
+    @staticmethod
+    # @receiver(signals.post_save, sender=Room)
+    def room_observer(sender, instance, created, **kwargs):
+        layer = channels.layers.get_channel_layer()
+
+        def _send(group_name):
+            async_to_sync(layer.group_send)(group_name, {
+                'type': 'websocket.message',
+                'data': {
+                    'text': 'Room is updated!',
+                    'id': instance.pk
+                }
+            })
+
+        if instance.is_private:
+            for member in instance.members.all():
+                if member.is_online:
+                    _send(MessengerConsumer.GROUPS['rooms'].format(member_id=member.id))
+        else:
+            for member in User.objects.all():
+                # TODO: find only "online" members
+                if member.is_online:
+                    _send(MessengerConsumer.GROUPS['rooms'].format(member_id=member.id))
+
+    @staticmethod
+    @receiver(signals.post_save, sender=Message)
+    def message_observer(sender, instance, created, **kwargs):
+        if not created:
+            # TODO: handle updated (edited) messages
+            return
+
+        layer = channels.layers.get_channel_layer()
+        room = instance.room
+
+        async_to_sync(layer.group_send)(
+            MessengerConsumer.GROUPS['room'].format(room_id=room.id),
             {
                 'type': 'websocket.message',
-                'content': 'RE: ' + message,
+                'data': {
+                    'namespace': 'messenger',
+                    'action': 'addMessage',
+                    'message': MessageSerializer(instance).data
+                }
             }
         )
-
-    # Receive message from room group
-    async def websocket_message(self, event):
-        message = event['content']
-
-        # Send message to WebSocket
-        await self.send_json({
-            'message': message,
-            'user_id': self.scope['user'].pk,
-        })

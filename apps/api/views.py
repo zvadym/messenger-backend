@@ -4,8 +4,8 @@ from rest_framework.generics import RetrieveAPIView, ListCreateAPIView, Retrieve
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.rooms.models import Room
-from .serializers import UserSerializer, RoomSerializer
+from apps.rooms.models import Room, Message
+from .serializers import UserSerializer, RoomSerializer, MessageSerializer
 from ..members.models import User
 
 
@@ -50,3 +50,21 @@ class RoomListCreateView(RoomViewMixin, ListCreateAPIView):
 
 class RoomRetrieveUpdateView(RoomViewMixin, RetrieveUpdateAPIView):
     pass
+
+
+class MessageViewMixin:
+    serializer_class = MessageSerializer
+
+    def get_queryset(self):
+        return Message.objects.filter(
+            Q(room__pk=self.kwargs['room_pk']) &
+            (
+                Q(room__is_private=True, room__members__in=[self.request.user]) |
+                Q(room__is_private=False)
+            )
+        ).distinct()
+
+
+class MessageListCreateView(MessageViewMixin, ListCreateAPIView):
+    def perform_create(self, serializer):
+        serializer.save(room_id=self.kwargs['room_pk'], created_by=self.request.user)
