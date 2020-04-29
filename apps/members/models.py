@@ -17,9 +17,13 @@ class User(AbstractUser):
         # self.username = self.email  # doesn't work from "admin"
         super().save(*args, **kwargs)
 
+    def update_last_action_dt(self):
+        self.last_action_dt = timezone.now()
+        self.save(update_fields=['last_action_dt'])
+
     @property
     def is_online(self):
-        return self.last_action_dt and timezone.now() - self.last_action_dt > \
+        return self.last_action_dt and timezone.now() - self.last_action_dt < \
                datetime.timedelta(minutes=ONLINE_TIMEOUT_SEC)
 
     # def block_token(self, token):

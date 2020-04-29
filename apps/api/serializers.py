@@ -14,7 +14,7 @@ class UserSerializer(serializers.ModelSerializer):
             'email',
             'first_name',
             'last_name',
-            'is_online',
+            'last_action_dt',
         )
 
 
@@ -37,6 +37,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
 class RoomSerializer(serializers.ModelSerializer):
     last_message = MessageField()
+    updated_dt = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Room

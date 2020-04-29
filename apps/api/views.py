@@ -1,6 +1,6 @@
 from django.db.models import Q
 from django.http import Http404
-from rest_framework.generics import RetrieveAPIView, ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import ListCreateAPIView, ListAPIView, RetrieveAPIView, RetrieveUpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -26,10 +26,15 @@ class UserDetailView(RetrieveAPIView):
             raise Http404
 
 
+class UserListView(ListAPIView):
+    serializer_class = UserSerializer
+    queryset = User.objects.all()
+
+
 class UserPingView(APIView):
     # Just update "last action" datetime (make user's status == "online")
-    def dispatch(self, request, *args, **kwargs):
-        request.user.save()
+    def put(self, request, *args, **kwargs):
+        request.user.update_last_action_dt()
         return Response({'online': True})
 
 

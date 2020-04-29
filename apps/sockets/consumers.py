@@ -6,7 +6,7 @@ from asgiref.sync import async_to_sync
 from django.db.models import signals
 from django.dispatch import receiver
 
-from apps.api.serializers import MessageSerializer
+from apps.api.serializers import MessageSerializer, RoomSerializer, UserSerializer
 from apps.members.models import User
 from apps.rooms.models import Room, Message
 
@@ -15,7 +15,7 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
     room_id = None
 
     GROUPS = {
-        'common': 'member-{member_id}',
+        'member': 'member-{member_id}',
         'room': 'room-{room_id}',
     }
 
@@ -23,7 +23,7 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
         # Join members group
-        await self.join_group(self.GROUPS['common'].format(member_id=self.scope['user'].pk))
+        await self.join_group(self.GROUPS['member'].format(member_id=self.scope['user'].pk))
         await self.accept()
 
     async def disconnect(self, close_code):
@@ -73,33 +73,55 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
             return
 
     async def websocket_message(self, event):
-        # Send message to WebSocket
+        # Send data to WebSocket
         print('websocket_message => ', self.channel_name,  event['data'])
-        await self.send_json(event['data'])
+        await self.send_json({
+            'namespace': 'messenger',
+            'action': 'addMessage' if event['data']['created'] else 'updateMessage',
+            'data': event['data']['instance_data']
+        })
+
+    async def websocket_room(self, event):
+        # Send data to WebSocket
+        print('websocket_room => ', self.channel_name,  event['data'])
+        await self.send_json({
+            'namespace': 'messenger',
+            'action': 'addRoom' if event['data']['created'] else 'updateRoom',
+            'data': event['data']['instance_data']
+        })
+
+    async def websocket_member(self, event):
+        print('websocket_member => ', self.channel_name,  event['data'])
+        await self.send_json({
+            'namespace': 'users',
+            'action': 'updateUser',
+            'data': event['data']['instance_data']
+        })
 
     @staticmethod
-    # @receiver(signals.post_save, sender=Room)
+    @receiver(signals.post_save, sender=Room)
     def room_observer(sender, instance, created, **kwargs):
         layer = channels.layers.get_channel_layer()
 
-        def _send(group_name):
+        def _send_created(group_name):
             async_to_sync(layer.group_send)(group_name, {
-                'type': 'websocket.message',
+                'type': 'websocket.room',
                 'data': {
-                    'text': 'Room is updated!',
-                    'id': instance.pk
+                    'created': created,
+                    'instance_data': RoomSerializer(instance).data,
                 }
             })
 
+        if not created:
+            # TODO: handle update
+            pass
+
         if instance.is_private:
             for member in instance.members.all():
-                if member.is_online:
-                    _send(MessengerConsumer.GROUPS['rooms'].format(member_id=member.id))
+                _send_created(MessengerConsumer.GROUPS['member'].format(member_id=member.id))
         else:
             for member in User.objects.all():
-                # TODO: find only "online" members
-                if member.is_online:
-                    _send(MessengerConsumer.GROUPS['rooms'].format(member_id=member.id))
+                _send_created(MessengerConsumer.GROUPS['member'].format(member_id=member.id))
 
     @staticmethod
     @receiver(signals.post_save, sender=Message)
@@ -116,9 +138,29 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
             {
                 'type': 'websocket.message',
                 'data': {
-                    'namespace': 'messenger',
-                    'action': 'addMessage',
-                    'message': MessageSerializer(instance).data
+                    'created': created,
+                    'instance_data': MessageSerializer(instance).data,
                 }
             }
         )
+
+    @staticmethod
+    @receiver(signals.post_save, sender=User)
+    def member_observer(sender, instance, created, **kwargs):
+        if created:
+            return
+
+        layer = channels.layers.get_channel_layer()
+
+        for member in User.objects.all():  # TODO: maybe filter to only ones why was active last.. day?
+            async_to_sync(layer.group_send)(
+                MessengerConsumer.GROUPS['member'].format(member_id=member.id),
+                {
+                    'type': 'websocket.member',
+                    'data': {
+                        'instance_data': UserSerializer(instance).data,
+                    }
+                }
+            )
+
+
