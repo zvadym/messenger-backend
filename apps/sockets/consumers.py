@@ -1,3 +1,4 @@
+import datetime
 import channels.layers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -5,6 +6,7 @@ from asgiref.sync import async_to_sync
 
 from django.db.models import signals
 from django.dispatch import receiver
+from django.utils import timezone
 
 from apps.api.serializers import MessageSerializer, RoomSerializer, UserSerializer
 from apps.members.models import User
@@ -80,8 +82,11 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
+    ########
+    # Methods to send message to WebSocket
+    ########
+
     async def websocket_message(self, event):
-        # Send data to WebSocket
         print('websocket_message => ', self.channel_name,  event['data'])
         await self.send_json({
             'namespace': 'messenger',
@@ -90,7 +95,6 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def websocket_room(self, event):
-        # Send data to WebSocket
         print('websocket_room => ', self.channel_name,  event['data'])
         await self.send_json({
             'namespace': 'messenger',
@@ -102,9 +106,13 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
         print('websocket_member => ', self.channel_name,  event['data'])
         await self.send_json({
             'namespace': 'users',
-            'action': 'updateUser',
+            'action': 'createUser' if event['data']['created'] else 'updateUser',
             'data': event['data']['instance_data']
         })
+
+    ########
+    # Model change handles
+    ########
 
     @staticmethod
     @receiver(signals.post_save, sender=Room)
@@ -155,20 +163,26 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
     @staticmethod
     @receiver(signals.post_save, sender=User)
     def member_observer(sender, instance, created, **kwargs):
-        if created:
-            return
-
         layer = channels.layers.get_channel_layer()
 
-        for member in User.objects.all():  # TODO: maybe filter to only ones why was active last.. day?
+        def _send(group_name):
             async_to_sync(layer.group_send)(
-                MessengerConsumer.GROUPS['member'].format(member_id=member.id),
+                group_name,
                 {
                     'type': 'websocket.member',
                     'data': {
+                        'created': created,
                         'instance_data': UserSerializer(instance).data,
                     }
                 }
             )
+
+        if created:
+            # Find all active members and send them a notification about a new member
+            for user in User.objects.filter(last_action_dt__gte=timezone.now() - datetime.timedelta(hours=1)):
+                _send(MessengerConsumer.GROUPS['my'].format(member_id=user.id))
+
+        else:
+            _send(MessengerConsumer.GROUPS['member'].format(member_id=instance.id),)
 
 
