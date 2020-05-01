@@ -15,15 +15,16 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
     room_id = None
 
     GROUPS = {
-        'member': 'member-{member_id}',
-        'room': 'room-{room_id}',
+        'my': 'my-{member_id}',  # private member's changes/messages
+        'member': 'member-{member_id}',  # public member's changes
+        'room': 'room-{room_id}',  # public room's changes
     }
 
     joined_groups = []
 
     async def connect(self):
         # Join members group
-        await self.join_group(self.GROUPS['member'].format(member_id=self.scope['user'].pk))
+        await self.join_group(self.GROUPS['my'].format(member_id=self.scope['user'].pk))
         await self.accept()
 
     async def disconnect(self, close_code):
@@ -70,6 +71,13 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
             return
 
         if content['type'] == 'room-leave':
+            return
+
+        if content['type'] == 'member-join':
+            await self.channel_layer.group_add(
+                self.GROUPS['member'].format(member_id=content['id']),
+                self.channel_name
+            )
             return
 
     async def websocket_message(self, event):
