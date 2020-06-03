@@ -44,6 +44,7 @@ class RoomViewMixin:
     def get_queryset(self):
         return Room.objects.filter(
             Q(is_private=True, members__in=[self.request.user]) |
+            Q(is_private=True, created_by=self.request.user) |
             Q(is_private=False)
         ).distinct()
 
@@ -65,6 +66,7 @@ class MessageViewMixin:
             Q(room__pk=self.kwargs['room_pk']) &
             (
                 Q(room__is_private=True, room__members__in=[self.request.user]) |
+                Q(room__is_private=True, room__created_by=self.request.user) |
                 Q(room__is_private=False)
             )
         ).distinct()

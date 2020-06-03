@@ -1,16 +1,7 @@
-import datetime
-import channels.layers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from asgiref.sync import async_to_sync
 
-from django.db.models import signals
-from django.dispatch import receiver
-from django.utils import timezone
-
-from apps.api.serializers import MessageSerializer, RoomSerializer, UserSerializer
-from apps.members.models import User
-from apps.rooms.models import Room, Message
+from apps.rooms.models import Room
 
 
 class MessengerConsumer(AsyncJsonWebsocketConsumer):
@@ -50,7 +41,12 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def get_room_members(self, room):
-        return list(room.members.values_list('pk', flat=True))
+        lst = list(room.members.values_list('pk', flat=True))
+
+        if room.created_by_id not in lst:
+            lst.append(room.created_by_id)
+
+        return lst
 
     # Receive message from WebSocket
     async def receive_json(self, content, **kwargs):
@@ -60,10 +56,8 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
             except Room.DoesNotExist:
                 return
 
-            members = await self.get_room_members(room)
-
             # Check access to the room
-            if not room.is_private or self.scope['user'].pk in members:
+            if not room.is_private or self.scope['user'].pk in await self.get_room_members(room):
                 group_name = self.GROUPS['room'].format(room_id=room.pk)
 
                 await self.channel_layer.group_add(
@@ -109,80 +103,5 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
             'action': 'createUser' if event['data']['created'] else 'updateUser',
             'data': event['data']['instance_data']
         })
-
-    ########
-    # Model change handles
-    ########
-
-    @staticmethod
-    @receiver(signals.post_save, sender=Room)
-    def room_observer(sender, instance, created, **kwargs):
-        layer = channels.layers.get_channel_layer()
-
-        def _send_created(group_name):
-            async_to_sync(layer.group_send)(group_name, {
-                'type': 'websocket.room',
-                'data': {
-                    'created': created,
-                    'instance_data': RoomSerializer(instance).data,
-                }
-            })
-
-        if not created:
-            # TODO: handle update
-            pass
-
-        if instance.is_private:
-            for member in instance.members.all():
-                _send_created(MessengerConsumer.GROUPS['member'].format(member_id=member.id))
-        else:
-            for member in User.objects.all():
-                _send_created(MessengerConsumer.GROUPS['member'].format(member_id=member.id))
-
-    @staticmethod
-    @receiver(signals.post_save, sender=Message)
-    def message_observer(sender, instance, created, **kwargs):
-        if not created:
-            # TODO: handle updated (edited) messages
-            return
-
-        layer = channels.layers.get_channel_layer()
-        room = instance.room
-
-        async_to_sync(layer.group_send)(
-            MessengerConsumer.GROUPS['room'].format(room_id=room.id),
-            {
-                'type': 'websocket.message',
-                'data': {
-                    'created': created,
-                    'instance_data': MessageSerializer(instance).data,
-                }
-            }
-        )
-
-    @staticmethod
-    @receiver(signals.post_save, sender=User)
-    def member_observer(sender, instance, created, **kwargs):
-        layer = channels.layers.get_channel_layer()
-
-        def _send(group_name):
-            async_to_sync(layer.group_send)(
-                group_name,
-                {
-                    'type': 'websocket.member',
-                    'data': {
-                        'created': created,
-                        'instance_data': UserSerializer(instance).data,
-                    }
-                }
-            )
-
-        if created:
-            # Find all active members and send them a notification about a new member
-            for user in User.objects.filter(last_action_dt__gte=timezone.now() - datetime.timedelta(hours=1)):
-                _send(MessengerConsumer.GROUPS['my'].format(member_id=user.id))
-
-        else:
-            _send(MessengerConsumer.GROUPS['member'].format(member_id=instance.id),)
 
 

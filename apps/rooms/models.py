@@ -4,7 +4,7 @@ from django.dispatch import receiver
 
 
 class Room(models.Model):
-    title = models.TextField()
+    title = models.CharField(max_length=120)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='+', blank=True)
     last_message = models.ForeignKey(
@@ -50,8 +50,4 @@ class Notification(models.Model):
         return '{}: {}...'.format(self.room, self.message[:100])
 
 
-@receiver(models.signals.post_save, sender=Message)
-def message_created(sender, instance, created, **kwargs):
-    if created:
-        instance.room.last_message = instance
-        instance.room.save()
+
