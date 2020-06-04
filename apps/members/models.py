@@ -25,15 +25,3 @@ class User(AbstractUser):
     def is_online(self):
         return self.last_action_dt and timezone.now() - self.last_action_dt < \
                datetime.timedelta(minutes=ONLINE_TIMEOUT_SEC)
-
-    # def block_token(self, token):
-    #     payload = jwt_decode_handler(token)
-    #     expired_dt = datetime.fromtimestamp(payload['exp'], tz=timezone.get_current_timezone())
-    #
-    #     if expired_dt <= timezone.now():
-    #         # Already expired
-    #         return
-    #
-    #     self.blocked_tokens.get_or_create(token=token, defaults={
-    #         'expired_dt': expired_dt
-    #     })

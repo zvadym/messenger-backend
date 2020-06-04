@@ -13,4 +13,5 @@ urlpatterns = [
     path('rooms/', views.RoomListCreateView.as_view()),
     path('rooms/<int:pk>/', views.RoomRetrieveUpdateView.as_view()),
     path('rooms/<int:room_pk>/messages/', views.MessageListCreateView.as_view()),
+    path('rooms/<int:room_pk>/notifications/', views.NotificationListView.as_view()),
 ]

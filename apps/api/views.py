@@ -4,9 +4,10 @@ from rest_framework.generics import ListCreateAPIView, ListAPIView, RetrieveAPIV
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.rooms.models import Room, Message
-from .serializers import UserSerializer, RoomSerializer, MessageSerializer
-from ..members.models import User
+from apps.rooms.models import Room, Message, Notification
+from apps.members.models import User
+
+from .serializers import UserSerializer, RoomSerializer, MessageSerializer, NotificationSerializer
 
 
 class LoggedInUserDetailView(RetrieveAPIView):
@@ -75,3 +76,21 @@ class MessageViewMixin:
 class MessageListCreateView(MessageViewMixin, ListCreateAPIView):
     def perform_create(self, serializer):
         serializer.save(room_id=self.kwargs['room_pk'], created_by=self.request.user)
+
+
+class NotificationViewMixin:
+    serializer_class = NotificationSerializer
+
+    def get_queryset(self):
+        return Notification.objects.filter(
+            Q(room__pk=self.kwargs['room_pk']) &
+            (
+                Q(room__is_private=True, room__members__in=[self.request.user]) |
+                Q(room__is_private=True, room__created_by=self.request.user) |
+                Q(room__is_private=False)
+            )
+        ).distinct()
+
+
+class NotificationListView(NotificationViewMixin, ListAPIView):
+    pass

@@ -5,9 +5,9 @@ from django.db.models import signals
 from django.dispatch import receiver
 from django.utils import timezone
 
-from apps.api.serializers import MessageSerializer, RoomSerializer, UserSerializer
+from apps.api.serializers import MessageSerializer, NotificationSerializer, RoomSerializer, UserSerializer
 from apps.members.models import User
-from apps.rooms.models import Room, Message
+from apps.rooms.models import Room, Message, Notification
 
 from .consumers import MessengerConsumer
 
@@ -69,6 +69,23 @@ def message_observer(sender, instance, created, **kwargs):
                 'created': created,
                 'instance_data': MessageSerializer(instance).data,
             }
+        }
+    )
+
+
+@receiver(signals.post_save, sender=Notification)
+def notification_observer(sender, instance, created, **kwargs):
+    if not created:
+        return
+
+    layer = channels.layers.get_channel_layer()
+    room = instance.room
+
+    async_to_sync(layer.group_send)(
+        MessengerConsumer.GROUPS['room'].format(room_id=room.id),
+        {
+            'type': 'websocket.notification',
+            'data': NotificationSerializer(instance).data,
         }
     )
 

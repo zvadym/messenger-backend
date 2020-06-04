@@ -1,5 +1,6 @@
 from django.db.models import signals
 from django.dispatch import receiver
+from apps.members.models import User
 from .models import Room, Notification, Message
 
 
@@ -42,3 +43,22 @@ def room_changed_notifications(sender, instance, **kwargs):
             room=instance,
             message='Room is become {}'.format('private' if instance.is_private else 'public')
         )
+
+
+@receiver(signals.m2m_changed, sender=Room.members.through)
+def room_members_notifications(sender, instance, action, pk_set, **kwargs):
+    for pk in pk_set:
+        member = User.objects.get(pk=pk)
+
+        msg = ''
+
+        if action == 'post_remove':
+            msg = '{} was removed from this room'.format(member.get_full_name())
+        if action == 'post_add':
+            msg = '{} was added to this room'.format(member.get_full_name())
+
+        if msg:
+            Notification.objects.create(
+                room=instance,
+                message=msg
+            )

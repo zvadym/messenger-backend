@@ -81,15 +81,20 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
     ########
 
     async def websocket_message(self, event):
-        print('websocket_message => ', self.channel_name,  event['data'])
         await self.send_json({
             'namespace': 'messenger',
             'action': 'addMessage' if event['data']['created'] else 'updateMessage',
             'data': event['data']['instance_data']
         })
 
+    async def websocket_notification(self, event):
+        await self.send_json({
+            'namespace': 'messenger',
+            'action': 'addNotification',
+            'data': event['data']
+        })
+
     async def websocket_room(self, event):
-        print('websocket_room => ', self.channel_name,  event['data'])
         await self.send_json({
             'namespace': 'messenger',
             'action': 'addRoom' if event['data']['created'] else 'updateRoom',
@@ -97,7 +102,6 @@ class MessengerConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def websocket_member(self, event):
-        print('websocket_member => ', self.channel_name,  event['data'])
         await self.send_json({
             'namespace': 'users',
             'action': 'createUser' if event['data']['created'] else 'updateUser',
